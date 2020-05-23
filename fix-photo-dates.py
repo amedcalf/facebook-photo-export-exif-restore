@@ -11,6 +11,9 @@ import os
 # relative location of the album folder within the export
 ALBUM_PATH: Path = Path("photos_and_videos/album")
 
+# whether to overwrite preexisting EXIF values
+force_replace: bool = False
+
 
 class ExportType(Enum):
     UNKNOWN = 0
@@ -18,18 +21,15 @@ class ExportType(Enum):
     JSON = 2
 
 
-def fix_the_date(filename: str, newdate: datetime, targetdir: str):
-    """Create a new copy of an image with a given date populated in EXIF
+def populate_exif(filename: str, date: datetime):
+    """Populate EXIF data in a given image.
 
     Args:
 
         filename: image file to copy
 
-        newdate: new datetime to insert into copy's EXIF metadata
-
-        targetdir: directory to place to newly generated copy in
+        date: new datetime to insert into copy's EXIF metadata
     """
-    Path(targetdir).mkdir(parents=True, exist_ok=True)
     try:
         im = Image.open(filename)
     except IOError:
@@ -37,11 +37,26 @@ def fix_the_date(filename: str, newdate: datetime, targetdir: str):
         return
 
     exif_dict = piexif.load(filename)
-    newdate_str = newdate.strftime("%Y:%m:%d %H:%M:%S")
-    exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = newdate_str
-    exif_dict["0th"][piexif.ImageIFD.DateTime] = newdate_str
+    date_str = date.strftime("%Y:%m:%d %H:%M:%S")
+    update_exif_value(exif_dict, "Exif", piexif.ExifIFD.DateTimeOriginal, date_str)
+    update_exif_value(exif_dict, "0th", piexif.ImageIFD.DateTime, date_str)
     exif_bytes = piexif.dump(exif_dict)
-    im.save(Path(targetdir) / Path(filename).name, "jpeg", exif=exif_bytes)
+    im.save(filename, exif=exif_bytes)
+
+
+def update_exif_value(
+    exif_dict: dict, ifd_name: str, tag_type: int, new_value: str,
+) -> bool:
+    """ Adds a given value to an exif dictionary.
+
+    Returns:
+        True if the value was inserted.  False if the value already existed
+        and was not replaced.
+    """
+
+    if not force_replace and tag_type in exif_dict[ifd_name]:
+        return
+    exif_dict[ifd_name][tag_type] = new_value
 
 
 def get_album_files(export_dir: str):
@@ -57,7 +72,7 @@ def process_html_album(filename: str):
         date_text = image_div.select("div._2lem")[0].text
         date = datetime.strptime(date_text, "%b %d, %Y, %I:%M %p")
         filename = image_div.select("div._2let > a")[0].get("href")
-        fix_the_date(filename, date, "test")
+        populate_exif(filename, date)
 
 
 def process_json_album(filename: str):
@@ -67,7 +82,7 @@ def process_json_album(filename: str):
     for image_data in parsed_json["photos"]:
         filename = image_data["uri"]
         date = datetime.utcfromtimestamp(int(image_data["creation_timestamp"]))
-        fix_the_date(filename, date, "test")
+        populate_exif(filename, date)
 
 
 def process_all_files(export_dir: str):
@@ -107,8 +122,16 @@ def detect_export_type() -> ExportType:
 
 if __name__ == "__main__":
     import sys
-    if (len(sys.argv) != 2):
-        print("Usage: ./fix-photo-dates.py <export_directory>")
+
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("Usage: ./fix-photo-dates.py --force-replace <export_directory>")
         exit()
 
-    process_all_files(sys.argv[1])
+    if len(sys.argv) == 3:
+        if sys.argv[1] == "--force-replace":
+            force_replace = True
+        else:
+            print("Unrecognized option!")
+            exit()
+
+    process_all_files(sys.argv[-1])
