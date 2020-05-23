@@ -21,14 +21,16 @@ class ExportType(Enum):
     JSON = 2
 
 
-def populate_exif(filename: str, date: datetime):
+def populate_exif(filename: str, date: datetime, description: str = None):
     """Populate EXIF data in a given image.
 
     Args:
 
         filename: image file to copy
 
-        date: new datetime to insert into copy's EXIF metadata
+        date: datetime to insert into EXIF DateTime and DateTimeOriginal
+
+        description: text to insert into EXIF ImageDescription
     """
     try:
         im = Image.open(filename)
@@ -38,8 +40,14 @@ def populate_exif(filename: str, date: datetime):
 
     exif_dict = piexif.load(filename)
     date_str = date.strftime("%Y:%m:%d %H:%M:%S")
+
     update_exif_value(exif_dict, "Exif", piexif.ExifIFD.DateTimeOriginal, date_str)
     update_exif_value(exif_dict, "0th", piexif.ImageIFD.DateTime, date_str)
+    if description is not None:
+        update_exif_value(
+            exif_dict, "0th", piexif.ImageIFD.ImageDescription, description
+        )
+
     exif_bytes = piexif.dump(exif_dict)
     im.save(filename, exif=exif_bytes)
 
@@ -55,8 +63,9 @@ def update_exif_value(
     """
 
     if not force_replace and tag_type in exif_dict[ifd_name]:
-        return
+        return False
     exif_dict[ifd_name][tag_type] = new_value
+    return True
 
 
 def get_album_files(export_dir: str):
@@ -82,7 +91,10 @@ def process_json_album(filename: str):
     for image_data in parsed_json["photos"]:
         filename = image_data["uri"]
         date = datetime.utcfromtimestamp(int(image_data["creation_timestamp"]))
-        populate_exif(filename, date)
+        description = None
+        if "description" in image_data:
+            description = image_data["description"]
+        populate_exif(filename, date, description)
 
 
 def process_all_files(export_dir: str):
