@@ -8,8 +8,10 @@ import json
 from pathlib import Path
 import os
 
+import glob
+
 # relative location of the album folder within the export
-ALBUM_PATH: Path = Path("photos_and_videos/album")
+ALBUM_PATH: Path = Path("your_activity_across_facebook/posts/album/")
 
 # whether to overwrite preexisting EXIF values
 force_replace: bool = False
@@ -70,18 +72,26 @@ def update_exif_value(
 
 def get_album_files(export_dir: str):
     """ Looks for Facebook export albums in export_dir """
-    return (Path(export_dir) / ALBUM_PATH).glob("*")
-
+    print(Path(export_dir) / ALBUM_PATH)
+    return glob.glob('./' + str(ALBUM_PATH) + '/*')
 
 def process_html_album(filename: str):
+   # print("here")
     """ Process a single exported album .html file """
     text = Path(filename).read_text(encoding="utf8")
     soup = BeautifulSoup(text, "html.parser")
-    for image_div in soup.select("div.pam"):
-        date_text = image_div.select("div._2lem")[0].text
-        date = datetime.strptime(date_text, "%b %d, %Y, %I:%M %p")
-        filename = image_div.select("div._2let > a")[0].get("href")
-        populate_exif(filename, date)
+  
+    for image_div in soup.select("div._a706"):
+
+        for image_div2 in soup.select("div._a6-g"):
+           
+            for image_div3 in image_div2.select("div._3-94"):
+                date_text = image_div3.select("a > div._a72d")[0].text
+                date = datetime.strptime(date_text, "%b %d, %Y %I:%M:%S%p")
+               
+            filename = image_div2.select("div._2ph_ > a")[0].get("href")
+         
+            populate_exif(filename, date)
 
 
 def process_json_album(filename: str):
